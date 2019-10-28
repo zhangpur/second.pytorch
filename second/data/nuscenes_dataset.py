@@ -9,7 +9,7 @@ import subprocess
 
 import fire
 import numpy as np
-
+import matplotlib.pyplot as plt
 from second.core import box_np_ops
 from second.core import preprocess as prep
 from second.data import kitti_common as kitti
@@ -17,26 +17,28 @@ from second.data.dataset import Dataset, register_dataset
 from second.utils.eval import get_coco_eval_result, get_official_eval_result
 from second.utils.progress_bar import progress_bar_iter as prog_bar
 from second.utils.timer import simple_timer
-
-
+#from nuscenes.nuscenes import NuScenes
+from second.data.nuscene_my.nuscenes_zp import NuScenes
 @register_dataset
 class NuScenesDataset(Dataset):
     NumPointFeatures = 4  # xyz, timestamp. set 4 to use kitti pretrain
     NameMapping = {
-        'movable_object.barrier': 'barrier',
-        'vehicle.bicycle': 'bicycle',
         'vehicle.bus.bendy': 'bus',
         'vehicle.bus.rigid': 'bus',
         'vehicle.car': 'car',
         'vehicle.construction': 'construction_vehicle',
         'vehicle.motorcycle': 'motorcycle',
+        'vehicle.bicycle': 'bicycle',
         'human.pedestrian.adult': 'pedestrian',
         'human.pedestrian.child': 'pedestrian',
         'human.pedestrian.construction_worker': 'pedestrian',
         'human.pedestrian.police_officer': 'pedestrian',
-        'movable_object.trafficcone': 'traffic_cone',
+
         'vehicle.trailer': 'trailer',
-        'vehicle.truck': 'truck'
+        'vehicle.truck': 'truck',
+
+        'movable_object.barrier': 'barrier',
+        'movable_object.trafficcone': 'barrier',
     }
     DefaultAttribute = {
         "car": "vehicle.parked",
@@ -58,6 +60,7 @@ class NuScenesDataset(Dataset):
                  prep_func=None,
                  num_point_features=None):
         self._root_path = Path(root_path)
+
         with open(info_path, 'rb') as f:
             data = pickle.load(f)
         self._nusc_infos = data["infos"]
@@ -75,10 +78,11 @@ class NuScenesDataset(Dataset):
         self.eval_version = "cvpr_2019"
         self._with_velocity = False
 
+        self.nusc=[]
     def __len__(self):
         return len(self._nusc_infos)
 
-    @property
+    #@propertygetSampleInfo
     def ground_truth_annotations(self):
         if "gt_boxes" not in self._nusc_infos[0]:
             return None
@@ -162,9 +166,21 @@ class NuScenesDataset(Dataset):
                 "token": info["token"]
             },
         }
+
         lidar_path = Path(info['lidar_path'])
         points = np.fromfile(
             str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])
+
+        ####view_points
+        '''
+        if len(self.nusc)==0:
+            self.nusc.append(NuScenes(version='v1.0-mini', dataroot='/home/zp/data/nuscene/nuscene-mini', verbose=True))
+        show_3view_points=True
+        if show_3view_points:
+            cur_sample = self.nusc[0].get('sample', info['token'])
+            self.nusc[0].render_sample_data_3view(cur_sample['data']['LIDAR_TOP'],axes_limit=60)
+        ####        
+        '''
         points[:, 3] /= 255
         points[:, 4] = 0
         sweep_points_list = [points]
@@ -431,9 +447,36 @@ class NuScenesDatasetD8(NuScenesDataset):
         if len(self._nusc_infos) > 28000:
             self._nusc_infos = list(
                 sorted(self._nusc_infos, key=lambda e: e["timestamp"]))
+
+
+            '''
+            Names,Boxes,Cnt=[],[],[]
+            for item in self._nusc_infos:
+                Cnt.append(item['num_lidar_pts'])
+                Names.append(item['gt_names'])
+                Boxes.append(item['gt_boxes'][:,:3])
+            Names=np.concatenate(Names)
+            Boxes=np.concatenate(Boxes)
+            Cnt=np.concatenate(Cnt)
+            for name in set(self.NameMapping.values()):
+                plt.figure()
+                clas_Box=Boxes[(Names==name)*(Cnt>0),:]
+                plt.hist2d(clas_Box[:, 0], clas_Box[:, 1], bins=50)
+                plt.xlim([-80, 80])
+                plt.ylim([-80, 80])
+                t=name+'_bev_loc'
+                plt.title(t)
+
+
+                plt.figure()
+                plt.hist2d(clas_Box[:, 0], clas_Box[:, 2], bins=50)
+                t=name+'_on-board_loc'
+                plt.xlim([-80, 80])
+                plt.ylim([-10, 10])
+                plt.title(t)
+            '''
+
             self._nusc_infos = self._nusc_infos[::8]
-
-
 @register_dataset
 class NuScenesDatasetD8Velo(NuScenesDatasetD8):
     """Nuscenes mini train set with velocity.
@@ -593,7 +636,6 @@ def _get_available_scenes(nusc):
     print("exist scene num:", len(available_scenes))
     return available_scenes
 
-
 def _fill_trainval_infos(nusc,
                          train_scenes,
                          val_scenes,
@@ -602,9 +644,13 @@ def _fill_trainval_infos(nusc,
     train_nusc_infos = []
     val_nusc_infos = []
     from pyquaternion import Quaternion
-    for sample in prog_bar(nusc.sample):
+    for s_index,sample in enumerate(prog_bar(nusc.sample)):
+        if s_index%100==0:
+            print('{}/{}'.format(s_index,len(nusc.sample)))
+        # get info for every sample
         lidar_token = sample["data"]["LIDAR_TOP"]
         cam_front_token = sample["data"]["CAM_FRONT"]
+        # lidar data
         sd_rec = nusc.get('sample_data', sample['data']["LIDAR_TOP"])
         cs_record = nusc.get('calibrated_sensor',
                              sd_rec['calibrated_sensor_token'])
@@ -626,7 +672,7 @@ def _fill_trainval_infos(nusc,
             "ego2global_rotation": pose_record['rotation'],
             "timestamp": sample["timestamp"],
         }
-
+        #pose of lidar
         l2e_r = info["lidar2ego_rotation"]
         l2e_t = info["lidar2ego_translation"]
         e2g_r = info["ego2global_rotation"]
@@ -637,6 +683,7 @@ def _fill_trainval_infos(nusc,
         sd_rec = nusc.get('sample_data', sample['data']["LIDAR_TOP"])
         sweeps = []
         while len(sweeps) < max_sweeps:
+            #process of sweeps
             if not sd_rec['prev'] == "":
                 sd_rec = nusc.get('sample_data', sd_rec['prev'])
                 cs_record = nusc.get('calibrated_sensor',
@@ -660,12 +707,22 @@ def _fill_trainval_infos(nusc,
                 l2e_r_s_mat = Quaternion(l2e_r_s).rotation_matrix
                 e2g_r_s_mat = Quaternion(e2g_r_s).rotation_matrix
 
+                # @ means matrix multiplication
+
+                # Attention: R_b2a = inv(R_a2b), T_b2a = - T_b2a * inv(R_b2a),
+
+                # R_sl2l = R_sl2se * R_se2g * R_g2l
+                # R_g2l= R_g2e * R_e2l =  inv(R_e2g) * inv(R_l2e)
                 R = (l2e_r_s_mat.T @ e2g_r_s_mat.T) @ (
                     np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T)
+
+                # T_sl2l = (T_sl2se * R_se2g + T_se2g) * R_g2l + T_g2l
+                # T_g2l = (T_g2e * R_e2l + T_e2l) = - T_e2g * inv(R_e2g) - T_l2e * inv(R_l2e)
                 T = (l2e_t_s @ e2g_r_s_mat.T + e2g_t_s) @ (
                     np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T)
                 T -= e2g_t @ (np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(
                     l2e_r_mat).T) + l2e_t @ np.linalg.inv(l2e_r_mat).T
+
                 sweep["sweep2lidar_rotation"] = R.T  # points @ R.T + T
                 sweep["sweep2lidar_translation"] = T
                 sweeps.append(sweep)

@@ -32,17 +32,18 @@ def create_groundtruth_database(dataset_class_name,
     else:
         database_save_path = Path(database_save_path)
     if db_info_save_path is None:
-        db_info_save_path = root_path / "kitti_dbinfos_train.pkl"
+        db_info_save_path = root_path / 'dbinfos_train.pkl'
     database_save_path.mkdir(parents=True, exist_ok=True)
     all_db_infos = {}
 
     group_counter = 0
     for j in prog_bar(list(range(len(dataset)))):
         image_idx = j
+        print('{}/{}'.format(j,len(dataset)))
         sensor_data = dataset.get_sensor_data(j)
         if "image_idx" in sensor_data["metadata"]:
             image_idx = sensor_data["metadata"]["image_idx"]
-        points = sensor_data["lidar"]["points"]
+        points = sensor_data["lidar"]["points"]#with sweep
         annos = sensor_data["lidar"]["annotations"]
         gt_boxes = annos["boxes"]
         names = annos["names"]
@@ -64,6 +65,7 @@ def create_groundtruth_database(dataset_class_name,
             gt_points = points[point_indices[:, i]]
 
             gt_points[:, :3] -= gt_boxes[i, :3]
+            #normalize gt coords to agent centric coords
             with open(filepath, 'w') as f:
                 gt_points.tofile(f)
             if (used_classes is None) or names[i] in used_classes:

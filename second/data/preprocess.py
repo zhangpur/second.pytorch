@@ -252,6 +252,8 @@ def prep_pointcloud(input_dict,
         if "group_ids" in gt_dict:
             group_ids = gt_dict["group_ids"]
 
+        #add noise to gt boxes
+        '''
         prep.noise_per_object_v3_(
             gt_dict["gt_boxes"],
             points,
@@ -279,7 +281,9 @@ def prep_pointcloud(input_dict,
         prep.global_translate_(gt_dict["gt_boxes"], points, global_translate_noise_std)
         bv_range = voxel_generator.point_cloud_range[[0, 1, 3, 4]]
         mask = prep.filter_gt_box_outside_range_by_center(gt_dict["gt_boxes"], bv_range)
-        _dict_select(gt_dict, mask)
+        _dict_select(gt_dict, mask)       
+        '''
+
 
         # limit rad to [-pi, pi]
         gt_dict["gt_boxes"][:, 6] = box_np_ops.limit_period(

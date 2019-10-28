@@ -151,7 +151,7 @@ def train(config_path,
             model_dir = torchplus.train.create_folder(model_dir)
     model_dir = Path(model_dir)
     if not resume and model_dir.exists():
-        raise ValueError("model dir exists and you don't specify resume.")
+        s=1
     model_dir.mkdir(parents=True, exist_ok=True)
     if result_path is None:
         result_path = model_dir / 'results'
@@ -417,13 +417,6 @@ def train(config_path,
                     break
             if step >= total_step:
                 break
-    except Exception as e:
-        print(json.dumps(example["metadata"], indent=2))
-        model_logging.log_text(str(e), step)
-        model_logging.log_text(json.dumps(example["metadata"], indent=2), step)
-        torchplus.train.save_models(model_dir, [net, amp_optimizer],
-                                    step)
-        raise e
     finally:
         model_logging.close()
     torchplus.train.save_models(model_dir, [net, amp_optimizer],
@@ -660,4 +653,8 @@ def mcnms_parameters_search(config_path,
 
 
 if __name__ == '__main__':
-    fire.Fire()
+
+    #train('/home/zp/code/second.pytorch/second/configs/car.fhd.config',model_dir='/home/zp/data/KITTI/model')
+    #train('/home/zp/code/second.pytorch/second/configs/nuscenes/all.fhd.config',model_dir='/home/zp/data/nuscene/nuscene/model')
+    train('/home/zp/code/second.pytorch/second/configs/nuscenes/all.fhd.config',
+          model_dir='/home/zp/data/nuscene/nuscene/model')

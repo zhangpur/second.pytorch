@@ -44,7 +44,10 @@ def progress_bar_iter(task_list, width=20, with_ptg=True, step_time_average=50, 
     for i, task in enumerate(task_list):
         t = time.time()
         yield task
-        step_times.append(time.time() - t)
+        try:
+            step_times.append(time.time() - t)
+        except:
+            s=1
         start_time += step_times[-1]
         start_time_str = second_to_time_str(start_time)
         average_step_time = np.mean(step_times[-step_time_average:]) + 1e-6
